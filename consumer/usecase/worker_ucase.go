@@ -1,4 +1,4 @@
-package usecases
+package usecase
 
 import (
 	"bytes"
@@ -47,5 +47,6 @@ func (w *workerUsecase) AssignmentHandler(endpoint string, rq domain.Request) (d
 }
 
 func (w *workerUsecase) ScheduledAssignmentHandler(endpoint string, rq domain.Request) (domain.Respond, error) {
-	return
+	var respond domain.Respond
+	return respond, nil
 }
