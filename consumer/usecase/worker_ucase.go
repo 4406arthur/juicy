@@ -9,30 +9,43 @@ import (
 
 	"github.com/4406arthur/juicy/domain"
 	"github.com/gammazero/workerpool"
-	"github.com/gojektech/heimdall/httpclient"
+	"github.com/gojektech/heimdall/v6/httpclient"
+	"github.com/nats-io/nats.go"
 )
 
 type workerUsecase struct {
 	workerPool *workerpool.WorkerPool
 	httpClient *httpclient.Client
+	jobQueue   <-chan *nats.Msg
 	//jobRepo  domain.JobRepository
 }
 
 //NewWorkerUsecase ...
-func NewWorkerUsecase(poolSize int, httpCli *httpclient.Client) domain.WorkerUsecase {
+func NewWorkerUsecase(poolSize int, httpCli *httpclient.Client, jobQueue <-chan *nats.Msg) domain.WorkerUsecase {
 	wp := workerpool.New(poolSize)
 	return &workerUsecase{
 		workerPool: wp,
 		httpClient: httpCli,
+		jobQueue:   jobQueue,
 	}
 }
 
-func (w *workerUsecase) AssignmentHandler(endpoint string, rq domain.Request) (domain.Respond, error) {
+func (w *workerUsecase) Start() {
+	var job domain.Job
+	for element := range w.jobQueue {
+		json.Unmarshal(element.Data, &job)
+		w.workerPool.Submit(func() {
+			w.AssignmentHandler(job)
+		})
+	}
+}
+
+func (w *workerUsecase) AssignmentHandler(rq domain.Job) (domain.Respond, error) {
 	jsonByte, _ := json.Marshal(rq)
 	headers := http.Header{}
 	headers.Set("Content-Type", "application/json")
 	resp, err := w.httpClient.Post(
-		endpoint,
+		rq.ServerEndpoint,
 		bytes.NewBuffer(jsonByte),
 		headers,
 	)
@@ -46,7 +59,7 @@ func (w *workerUsecase) AssignmentHandler(endpoint string, rq domain.Request) (d
 	return respond, nil
 }
 
-func (w *workerUsecase) ScheduledAssignmentHandler(endpoint string, rq domain.Request) (domain.Respond, error) {
-	var respond domain.Respond
-	return respond, nil
-}
+// func (w *workerUsecase) ScheduledAssignmentHandler(endpoint string, rq domain.Job) (domain.Respond, error) {
+// 	var respond domain.Respond
+// 	return respond, nil
+// }

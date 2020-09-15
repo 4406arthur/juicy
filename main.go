@@ -6,10 +6,11 @@ import (
 	"log"
 	"time"
 
-	_natsDeliver "github.com/4406arthur/juicy/delivery/nats"
-	_workerUsecase "github.com/4406arthur/juicy/usecase"
+	_natsDeliver "github.com/4406arthur/juicy/consumer/delivery/nats"
+	_workerUsecase "github.com/4406arthur/juicy/consumer/usecase"
 	"github.com/gojektech/heimdall"
 	"github.com/gojektech/heimdall/v6/httpclient"
+	"github.com/nats-io/nats.go"
 	"github.com/spf13/viper"
 )
 
@@ -47,7 +48,7 @@ func main() {
 	}()
 
 	natsHost := viper.GetString(`nats.host`)
-	_natsDeliver.NewSubscriber(natsHost)
+	subscriber := _natsDeliver.NewSubscriber(natsHost)
 
 	poolSize := viper.GetInt(`worker.poolSize`)
 
@@ -60,11 +61,14 @@ func main() {
 	retrier := heimdall.NewRetrier(backoff)
 	timeout := 5000 * time.Millisecond
 	// Create a new client, sets the retry mechanism, and the number of times you would like to retry
-	client := httpclient.NewClient(
+	httpCli := httpclient.NewClient(
 		httpclient.WithHTTPTimeout(timeout),
 		httpclient.WithRetrier(retrier),
 		httpclient.WithRetryCount(3),
 	)
-	worker := _workerUsecase.NewWorkerUsecase(poolSize, client)
 
+	jobQueue := make(chan *nats.Msg)
+	worker := _workerUsecase.NewWorkerUsecase(poolSize, httpCli, jobQueue)
+	subscriber.Subscribe("news", "juicy-workers", jobQueue)
+	go worker.Start()
 }
