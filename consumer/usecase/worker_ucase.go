@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -11,6 +10,7 @@ import (
 	"github.com/gammazero/workerpool"
 	"github.com/gojektech/heimdall/v6/httpclient"
 	"github.com/nats-io/nats.go"
+	"github.com/pquerna/ffjson/ffjson"
 )
 
 type workerUsecase struct {
@@ -33,7 +33,12 @@ func NewWorkerUsecase(poolSize int, httpCli *httpclient.Client, jobQueue <-chan 
 func (w *workerUsecase) Start() {
 	var job domain.Job
 	for element := range w.jobQueue {
-		json.Unmarshal(element.Data, &job)
+		fmt.Printf("receive job bytes: %s", string(element.Data))
+		err := ffjson.Unmarshal(element.Data, &job)
+		if err != nil {
+			fmt.Printf("job unserialize failed: %s", err.Error())
+			continue
+		}
 		w.workerPool.Submit(func() {
 			w.AssignmentHandler(job)
 		})
@@ -41,7 +46,7 @@ func (w *workerUsecase) Start() {
 }
 
 func (w *workerUsecase) AssignmentHandler(rq domain.Job) (domain.Respond, error) {
-	jsonByte, _ := json.Marshal(rq)
+	jsonByte, _ := ffjson.Marshal(rq)
 	headers := http.Header{}
 	headers.Set("Content-Type", "application/json")
 	resp, err := w.httpClient.Post(
@@ -54,7 +59,7 @@ func (w *workerUsecase) AssignmentHandler(rq domain.Job) (domain.Respond, error)
 	}
 	respBody, _ := ioutil.ReadAll(resp.Body)
 	var respond domain.Respond
-	json.Unmarshal(respBody, &respond)
+	ffjson.Unmarshal(respBody, &respond)
 
 	return respond, nil
 }

@@ -1,10 +1,14 @@
 package main
 
 import (
-	"database/sql"
+	"flag"
 	"fmt"
 	"log"
+	"os"
+	"runtime"
 	"time"
+
+	// _ "github.com/lib/pq"
 
 	_natsDeliver "github.com/4406arthur/juicy/consumer/delivery/nats"
 	_workerUsecase "github.com/4406arthur/juicy/consumer/usecase"
@@ -14,61 +18,99 @@ import (
 	"github.com/spf13/viper"
 )
 
-func init() {
-	viper.SetConfigFile(`config.json`)
-	err := viper.ReadInConfig()
-	if err != nil {
-		panic(err)
+var usageStr = `
+AI Customer service controller
+
+Server Options:
+    -c, --config <file>              Configuration file path
+    -h, --help                       Show this message
+    -v, --version                    Show version
+`
+
+// usage will print out the flag options for the server.
+func usage() {
+	fmt.Printf("%s\n", usageStr)
+	os.Exit(0)
+}
+
+func setup(path string) *viper.Viper {
+	v := viper.New()
+	v.SetConfigType("json")
+	v.SetConfigName("config")
+	if path != "" {
+		v.AddConfigPath(path)
+	} else {
+		v.AddConfigPath("./config/")
 	}
 
-	if viper.GetBool(`debug`) {
-		log.Println("Service RUN on DEBUG mode")
+	if err := v.ReadInConfig(); err != nil {
+		log.Fatalf("Error reading config file, %s", err)
 	}
+	return v
+}
+
+var version string
+
+func printVersion() {
+	fmt.Printf(`Juicy worker %s, Compiler: %s %s, Copyright (C) 2020 EsunBank, Inc.`,
+		version,
+		runtime.Compiler,
+		runtime.Version())
+	fmt.Println()
 }
 
 func main() {
-	dbHost := viper.GetString(`database.host`)
-	dbPort := viper.GetUint(`database.port`)
-	dbUser := viper.GetString(`database.user`)
-	dbPass := viper.GetString(`database.pass`)
-	dbName := viper.GetString(`database.name`)
-	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
-		"password=%s dbname=%s sslmode=disable",
-		dbHost, dbPort, dbUser, dbPass, dbName)
-	dbConn, err := sql.Open("postgres", psqlInfo)
-	if err != nil {
-		log.Fatal(err)
+
+	var configFile string
+	var showVersion bool
+	version = "0.0.1"
+	flag.BoolVar(&showVersion, "v", false, "Print version information.")
+	flag.StringVar(&configFile, "c", "", "Configuration file path.")
+	flag.Usage = usage
+	flag.Parse()
+
+	if showVersion {
+		printVersion()
+		os.Exit(0)
 	}
 
-	defer func() {
-		err := dbConn.Close()
-		if err != nil {
-			log.Fatal(err)
-		}
-	}()
+	viperConfig := setup(configFile)
+	// dbHost := viperConfig.GetString(`database.host`)
+	// dbPort := viperConfig.GetUint(`database.port`)
+	// dbUser := viperConfig.GetString(`database.user`)
+	// dbPass := viperConfig.GetString(`database.pass`)
+	// dbName := viperConfig.GetString(`database.name`)
+	// psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
+	// 	"password=%s dbname=%s sslmode=disable",
+	// 	dbHost, dbPort, dbUser, dbPass, dbName)
+	// dbConn, err := sql.Open("postgres", psqlInfo)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+	// defer func() {
+	// 	err := dbConn.Close()
+	// 	if err != nil {
+	// 		log.Fatal(err)
+	// 	}
+	// }()
 
-	natsHost := viper.GetString(`nats.host`)
-	subscriber := _natsDeliver.NewSubscriber(natsHost)
+	natsHost := viperConfig.GetString(`nats.host`)
+	messageQueue := _natsDeliver.NewMessageQueue(natsHost)
 
-	poolSize := viper.GetInt(`worker.poolSize`)
+	poolSize := viperConfig.GetInt(`worker.poolSize`)
 
-	// First set a backoff mechanism. Constant backoff increases the backoff at a constant rate
-	backoffInterval := 2 * time.Millisecond
-	// Define a maximum jitter interval. It must be more than 1*time.Millisecond
-	maximumJitterInterval := 5 * time.Millisecond
-	backoff := heimdall.NewConstantBackoff(backoffInterval, maximumJitterInterval)
-	// Create a new retry mechanism with the backoff
-	retrier := heimdall.NewRetrier(backoff)
-	timeout := 5000 * time.Millisecond
-	// Create a new client, sets the retry mechanism, and the number of times you would like to retry
+	//define a retry http cli
+	timeout := 3000 * time.Millisecond
 	httpCli := httpclient.NewClient(
 		httpclient.WithHTTPTimeout(timeout),
-		httpclient.WithRetrier(retrier),
-		httpclient.WithRetryCount(3),
+		httpclient.WithRetryCount(2),
+		httpclient.WithRetrier(heimdall.NewRetrier(heimdall.NewConstantBackoff(10*time.Millisecond, 50*time.Millisecond))),
 	)
 
+	//could be buffer queue
 	jobQueue := make(chan *nats.Msg)
 	worker := _workerUsecase.NewWorkerUsecase(poolSize, httpCli, jobQueue)
-	subscriber.Subscribe("news", "juicy-workers", jobQueue)
-	go worker.Start()
+	messageQueue.Subscribe("news", "juicy-workers", jobQueue)
+	worker.Start()
+
 }

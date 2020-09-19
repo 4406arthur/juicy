@@ -19,7 +19,7 @@ type Respond struct {
 
 //Job ...
 type Job struct {
-	ServerEndpoint string `json:server_endpoint`
+	ServerEndpoint string `json:"server_endpoint"`
 	EsunUUID       string `json:"esun_uuid"`
 	ServerUUID     string `json:"server_uuid"`
 	EsunTimestamp  int    `json:"esun_timestamp"`
