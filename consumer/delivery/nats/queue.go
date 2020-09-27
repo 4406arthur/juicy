@@ -29,3 +29,10 @@ func NewMessageQueue(conn string) *MessageQueue {
 func (s *MessageQueue) Subscribe(subj, queueName string, ch chan *nats.Msg) {
 	s.natConn.QueueSubscribeSyncWithChan(subj, queueName, ch)
 }
+
+//Publish ...
+func (s *MessageQueue) Publish(subj string, ch chan []byte) {
+	for msg := range ch {
+		s.natConn.Publish(subj, msg)
+	}
+}

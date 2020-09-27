@@ -1,17 +1,20 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"runtime"
+	"syscall"
 	"time"
 
 	// _ "github.com/lib/pq"
-
 	_natsDeliver "github.com/4406arthur/juicy/consumer/delivery/nats"
-	_workerUsecase "github.com/4406arthur/juicy/consumer/usecase"
+	_jobManager "github.com/4406arthur/juicy/consumer/usecase"
+	"github.com/go-playground/validator/v10"
 	"github.com/gojektech/heimdall"
 	"github.com/gojektech/heimdall/v6/httpclient"
 	"github.com/nats-io/nats.go"
@@ -59,6 +62,9 @@ func printVersion() {
 	fmt.Println()
 }
 
+// use a single instance of Validate, it caches struct info
+var validate *validator.Validate
+
 func main() {
 
 	var configFile string
@@ -75,42 +81,54 @@ func main() {
 	}
 
 	viperConfig := setup(configFile)
-	// dbHost := viperConfig.GetString(`database.host`)
-	// dbPort := viperConfig.GetUint(`database.port`)
-	// dbUser := viperConfig.GetString(`database.user`)
-	// dbPass := viperConfig.GetString(`database.pass`)
-	// dbName := viperConfig.GetString(`database.name`)
-	// psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
-	// 	"password=%s dbname=%s sslmode=disable",
-	// 	dbHost, dbPort, dbUser, dbPass, dbName)
-	// dbConn, err := sql.Open("postgres", psqlInfo)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// defer func() {
-	// 	err := dbConn.Close()
-	// 	if err != nil {
-	// 		log.Fatal(err)
-	// 	}
-	// }()
-
 	natsHost := viperConfig.GetString(`nats.host`)
 	messageQueue := _natsDeliver.NewMessageQueue(natsHost)
-
-	poolSize := viperConfig.GetInt(`worker.poolSize`)
-
+	jobRetry := viperConfig.GetInt(`job.retryCount`)
+	timeout := viperConfig.GetInt(`job.timeout`)
 	//define a retry http cli
-	timeout := 3000 * time.Millisecond
 	httpCli := httpclient.NewClient(
-		httpclient.WithHTTPTimeout(timeout),
-		httpclient.WithRetryCount(2),
+		httpclient.WithHTTPTimeout(time.Duration(timeout)*time.Millisecond),
+		httpclient.WithRetryCount(jobRetry),
 		httpclient.WithRetrier(heimdall.NewRetrier(heimdall.NewConstantBackoff(10*time.Millisecond, 50*time.Millisecond))),
 	)
 
 	//could be buffer queue
 	jobQueue := make(chan *nats.Msg)
-	worker := _workerUsecase.NewWorkerUsecase(poolSize, httpCli, jobQueue)
-	messageQueue.Subscribe("news", "juicy-workers", jobQueue)
-	worker.Start()
+	ansCh := make(chan []byte)
+	// used to catch os signal
+	// syscall.SIGINT and syscall.SIGTERM
+	finished := make(chan bool)
+	ctx := withContextFunc(context.Background(), func() {
+		log.Println("cancel from ctrl+c event")
+		close(jobQueue)
+		close(ansCh)
+		close(finished)
+	})
 
+	messageQueue.Subscribe("question", "juicy-workers", jobQueue)
+	validate = validator.New()
+	wokerPoolSize := viperConfig.GetInt(`worker.poolSize`)
+	jobManager := _jobManager.NewJobManager(wokerPoolSize, validate, httpCli, jobQueue, ansCh)
+	go jobManager.Start(ctx)
+	go messageQueue.Publish("answer", ansCh)
+
+	<-finished
+}
+
+func withContextFunc(ctx context.Context, f func()) context.Context {
+	ctx, cancel := context.WithCancel(ctx)
+	go func() {
+		c := make(chan os.Signal)
+		signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
+		defer signal.Stop(c)
+
+		select {
+		case <-ctx.Done():
+		case <-c:
+			cancel()
+			f()
+		}
+	}()
+
+	return ctx
 }

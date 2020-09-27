@@ -1,11 +1,12 @@
 {
     "nats": {
-        "host": "localhost:4222"
+        "host": "localhost:32774"
     },
     "worker":{
-        "poolSize": 2
+        "poolSize": 3
     },
     "job":{
-        "retryCount" : 3
+        "retryCount" : 3,
+        "timeout": 3500
     }
 }
