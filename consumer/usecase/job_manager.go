@@ -37,36 +37,38 @@ func NewJobManager(poolSize int, validate *validator.Validate, httpCli *httpclie
 	}
 }
 
-func (w *jobManager) Start(ctx context.Context) {
+func (m *jobManager) Start(ctx context.Context) {
 	var job domain.Job
 	for {
 		select {
-		case element := <-w.jobQueue:
+		case element := <-m.jobQueue:
 			ffjson.Unmarshal(element.Data, &job)
-			err := w.validate.Struct(&job)
+			err := m.validate.Struct(&job)
 			if err != nil {
 				log.Printf("got wrong job format: %s", err.Error())
 				continue
 			}
-			w.workerPool.Submit(
+			m.workerPool.Submit(
 				func() {
-					w.Task(&job)
+					m.Task(&job)
 				})
 		case <-ctx.Done():
 			log.Println("close workers")
-			w.Stop()
+			m.Stop()
 			return
 		}
 	}
 }
 
-func (w *jobManager) Stop() {
-	w.workerPool.StopWait()
+func (m *jobManager) Stop() {
+	m.workerPool.StopWait()
+	// close(m.jobQueue)
+	close(m.ansCh)
 }
 
-func (w *jobManager) Task(job *domain.Job) {
+func (m *jobManager) Task(job *domain.Job) {
 	var Respond domain.Respond
-	Respond, err := w.PostInferenceHandler(job.ServerEndpoint, job.Payload)
+	Respond, err := m.PostInferenceHandler(job.ServerEndpoint, job.Payload)
 	if err != nil {
 		log.Printf("Got error with: %s \n", err.Error())
 		jsonByte, _ := ffjson.Marshal(&domain.Respond{
@@ -74,10 +76,10 @@ func (w *jobManager) Task(job *domain.Job) {
 			QuesionID: job.QuesionID,
 			ErrorMsg:  err.Error(),
 		})
-		w.ansCh <- jsonByte
+		m.ansCh <- jsonByte
 		return
 	}
-	err = w.validate.Struct(&Respond)
+	err = m.validate.Struct(&Respond)
 	if err != nil {
 		log.Printf("Got error when validate inference server resp: %s \n", err.Error())
 		jsonByte, _ := ffjson.Marshal(&domain.Respond{
@@ -85,22 +87,22 @@ func (w *jobManager) Task(job *domain.Job) {
 			QuesionID: job.QuesionID,
 			ErrorMsg:  err.Error(),
 		})
-		w.ansCh <- jsonByte
+		m.ansCh <- jsonByte
 		return
 	}
 	Respond.TeamID = job.TeamID
 	Respond.QuesionID = job.QuesionID
 	jsonByte, _ := ffjson.Marshal(Respond)
-	w.ansCh <- jsonByte
+	m.ansCh <- jsonByte
 }
 
 //PostInferenceHandler ...
-func (w *jobManager) PostInferenceHandler(endpoint string, rq domain.Request) (domain.Respond, error) {
+func (m *jobManager) PostInferenceHandler(endpoint string, rq domain.Request) (domain.Respond, error) {
 	jsonByte, _ := ffjson.Marshal(rq)
 	var respond domain.Respond
 	headers := http.Header{}
 	headers.Set("Content-Type", "application/json")
-	resp, err := w.httpClient.Post(
+	resp, err := m.httpClient.Post(
 		endpoint,
 		bytes.NewBuffer(jsonByte),
 		headers,

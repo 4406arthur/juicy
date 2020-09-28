@@ -1,9 +1,11 @@
 {
     "nats": {
-        "host": "localhost:32774"
+        "host": "localhost:32787",
+        "sub": "question",
+        "pub": "answer"
     },
     "worker":{
-        "poolSize": 3
+        "poolSize": 8
     },
     "job":{
         "retryCount" : 3,

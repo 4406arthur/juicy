@@ -100,17 +100,18 @@ func main() {
 	finished := make(chan bool)
 	ctx := withContextFunc(context.Background(), func() {
 		log.Println("cancel from ctrl+c event")
-		close(jobQueue)
-		close(ansCh)
 		close(finished)
+		close(jobQueue)
 	})
 
-	messageQueue.Subscribe("question", "juicy-workers", jobQueue)
+	sub := viperConfig.GetString(`nats.sub`)
+	pub := viperConfig.GetString(`nats.pub`)
+	messageQueue.Subscribe(sub, "juicy-workers", jobQueue)
 	validate = validator.New()
 	wokerPoolSize := viperConfig.GetInt(`worker.poolSize`)
 	jobManager := _jobManager.NewJobManager(wokerPoolSize, validate, httpCli, jobQueue, ansCh)
 	go jobManager.Start(ctx)
-	go messageQueue.Publish("answer", ansCh)
+	go messageQueue.Publish(pub, ansCh)
 
 	<-finished
 }
