@@ -1,6 +1,6 @@
 {
     "nats": {
-        "host": "localhost:32787",
+        "host": "localhost:4222",
         "sub": "question",
         "pub": "answer"
     },

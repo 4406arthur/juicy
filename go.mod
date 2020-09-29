@@ -11,6 +11,7 @@ require (
 	github.com/nats-io/nats-server/v2 v2.1.8 // indirect
 	github.com/nats-io/nats.go v1.10.0
 	github.com/pquerna/ffjson v0.0.0-20190930134022-aa0246cd15f7
+	github.com/prometheus/client_golang v0.9.3
 	github.com/spf13/viper v1.7.1
 	google.golang.org/protobuf v1.25.0 // indirect
 )

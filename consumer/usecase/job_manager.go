@@ -14,6 +14,8 @@ import (
 	"github.com/gojektech/heimdall/v6/httpclient"
 	"github.com/nats-io/nats.go"
 	"github.com/pquerna/ffjson/ffjson"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 type jobManager struct {
@@ -37,6 +39,13 @@ func NewJobManager(poolSize int, validate *validator.Validate, httpCli *httpclie
 	}
 }
 
+var (
+	opsProcessed = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "juicy_manager_total_jobs",
+		Help: "The total number of job",
+	})
+)
+
 func (m *jobManager) Start(ctx context.Context) {
 	var job domain.Job
 	for {
@@ -50,6 +59,7 @@ func (m *jobManager) Start(ctx context.Context) {
 			}
 			m.workerPool.Submit(
 				func() {
+					opsProcessed.Inc()
 					m.Task(&job)
 				})
 		case <-ctx.Done():
@@ -66,6 +76,13 @@ func (m *jobManager) Stop() {
 	close(m.ansCh)
 }
 
+var (
+	opsError = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "juicy_manager_failed_job",
+		Help: "The failed number of job",
+	})
+)
+
 func (m *jobManager) Task(job *domain.Job) {
 	var Respond domain.Respond
 	Respond, err := m.PostInferenceHandler(job.ServerEndpoint, job.Payload)
@@ -76,6 +93,7 @@ func (m *jobManager) Task(job *domain.Job) {
 			QuesionID: job.QuesionID,
 			ErrorMsg:  err.Error(),
 		})
+		opsError.Inc()
 		m.ansCh <- jsonByte
 		return
 	}
