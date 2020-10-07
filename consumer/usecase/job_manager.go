@@ -51,7 +51,7 @@ func (m *jobManager) Start(ctx context.Context) {
 		select {
 		case element := <-m.jobQueue:
 			var job domain.Job
-			ffjson.Unmarshal(element.Data, job)
+			ffjson.Unmarshal(element.Data, &job)
 			err := m.validate.Struct(job)
 			if err != nil {
 				log.Printf("got wrong job format: %s", err.Error())
@@ -88,7 +88,7 @@ func (m *jobManager) Task(job domain.Job) {
 	var Respond domain.Respond
 	Respond, err := m.PostInferenceHandler(job.ServerEndpoint, job.Payload)
 	if err != nil {
-		log.Printf("Got error with: %s \n", err.Error())
+		log.Printf("Qid: %s TeamID: %s Got error with: %s \n", job.QuesionID, job.TeamID, err.Error())
 		jsonByte, _ := ffjson.Marshal(&domain.Respond{
 			TeamID:    job.TeamID,
 			QuesionID: job.QuesionID,
@@ -100,7 +100,7 @@ func (m *jobManager) Task(job domain.Job) {
 	}
 	err = m.validate.Struct(&Respond)
 	if err != nil {
-		log.Printf("Got error when validate inference server resp: %s \n", err.Error())
+		log.Printf("Qid: %s TeamID: %s Got error when validate inference server resp: %s \n", job.QuesionID, job.TeamID, err.Error())
 		jsonByte, _ := ffjson.Marshal(&domain.Respond{
 			TeamID:    job.TeamID,
 			QuesionID: job.QuesionID,
