@@ -15,8 +15,8 @@ type Request struct {
 
 //Respond ...
 type Respond struct {
-	TeamID          string   `json:"scoring_system_team_id" validate:"required"`
-	QuesionID       string   `json:"quesion_id" validate:"required"`
+	TeamID          string   `json:"scoring_system_team_id" `
+	QuesionID       string   `json:"quesion_id" `
 	EsunUUID        string   `json:"esun_uuid,omitempty" validate:"required"`
 	ServerUUID      string   `json:"server_uuid,omitempty" validate:"required"`
 	ServerTimestamp int      `json:"server_timestamp,omitempty" validate:"required"`
@@ -37,6 +37,5 @@ type JobManager interface {
 	Start(context.Context)
 	PostInferenceHandler(string, Request) (Respond, error)
 	Stop()
-	// RelayHandler(msg []byte)
 	// ScheduledAssignmentHandler(endpoint string, rq Job) (Respond, error)
 }
