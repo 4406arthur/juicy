@@ -24,11 +24,12 @@ type jobManager struct {
 	httpClient *httpclient.Client
 	jobQueue   <-chan *nats.Msg
 	ansCh      chan<- []byte
+	finished   chan<- bool
 	//jobRepo  domain.JobRepository
 }
 
 //NewJobManager ...
-func NewJobManager(poolSize int, validate *validator.Validate, httpCli *httpclient.Client, jobQueue <-chan *nats.Msg, ansCh chan<- []byte) domain.JobManager {
+func NewJobManager(poolSize int, validate *validator.Validate, httpCli *httpclient.Client, jobQueue <-chan *nats.Msg, ansCh chan<- []byte, finished chan<- bool) domain.JobManager {
 	wp := workerpool.New(poolSize)
 	return &jobManager{
 		workerPool: wp,
@@ -36,6 +37,7 @@ func NewJobManager(poolSize int, validate *validator.Validate, httpCli *httpclie
 		httpClient: httpCli,
 		jobQueue:   jobQueue,
 		ansCh:      ansCh,
+		finished:   finished,
 	}
 }
 
@@ -73,8 +75,8 @@ func (m *jobManager) Start(ctx context.Context) {
 
 func (m *jobManager) Stop() {
 	m.workerPool.StopWait()
-	// close(m.jobQueue)
-	close(m.ansCh)
+	log.Printf("already completed pending task")
+	m.finished <- true
 }
 
 var (

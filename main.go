@@ -96,14 +96,15 @@ func main() {
 
 	//could be buffer queue
 	jobQueue := make(chan *nats.Msg, 1000)
+	defer close(jobQueue)
 	ansCh := make(chan []byte)
+	defer close(ansCh)
 	// used to catch os signal
 	// syscall.SIGINT and syscall.SIGTERM
 	finished := make(chan bool)
+	defer close(finished)
 	ctx := withContextFunc(context.Background(), func() {
 		log.Println("cancel from ctrl+c event")
-		close(finished)
-		close(jobQueue)
 	})
 
 	sub := viperConfig.GetString(`nats.sub`)
@@ -111,7 +112,7 @@ func main() {
 	messageQueue.Subscribe(sub, "juicy-workers", jobQueue)
 	validate = validator.New()
 	wokerPoolSize := viperConfig.GetInt(`worker.poolSize`)
-	jobManager := _jobManager.NewJobManager(wokerPoolSize, validate, httpCli, jobQueue, ansCh)
+	jobManager := _jobManager.NewJobManager(wokerPoolSize, validate, httpCli, jobQueue, ansCh, finished)
 	go jobManager.Start(ctx)
 	go messageQueue.Publish(pub, ansCh)
 
