@@ -47,12 +47,12 @@ var (
 )
 
 func (m *jobManager) Start(ctx context.Context) {
-	var job domain.Job
 	for {
 		select {
 		case element := <-m.jobQueue:
-			ffjson.Unmarshal(element.Data, &job)
-			err := m.validate.Struct(&job)
+			var job domain.Job
+			ffjson.Unmarshal(element.Data, job)
+			err := m.validate.Struct(job)
 			if err != nil {
 				log.Printf("got wrong job format: %s", err.Error())
 				continue
@@ -61,7 +61,7 @@ func (m *jobManager) Start(ctx context.Context) {
 			m.workerPool.Submit(
 				func() {
 					opsProcessed.Inc()
-					m.Task(&job)
+					m.Task(job)
 				})
 		case <-ctx.Done():
 			log.Println("close workers")
@@ -84,7 +84,7 @@ var (
 	})
 )
 
-func (m *jobManager) Task(job *domain.Job) {
+func (m *jobManager) Task(job domain.Job) {
 	var Respond domain.Respond
 	Respond, err := m.PostInferenceHandler(job.ServerEndpoint, job.Payload)
 	if err != nil {

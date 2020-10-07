@@ -95,7 +95,7 @@ func main() {
 	)
 
 	//could be buffer queue
-	jobQueue := make(chan *nats.Msg)
+	jobQueue := make(chan *nats.Msg, 1000)
 	ansCh := make(chan []byte)
 	// used to catch os signal
 	// syscall.SIGINT and syscall.SIGTERM
