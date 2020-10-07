@@ -15,7 +15,7 @@ type MessageQueue struct {
 //NewMessageQueue ...
 func NewMessageQueue(conn string) *MessageQueue {
 	//TODO support opts flag
-	opts := []nats.Option{nats.Name("juicy")}
+	opts := []nats.Option{nats.Name("juicy"), nats.ErrorHandler(logSlowConsumer)}
 	nc, err := nats.Connect(conn, opts...)
 	if err != nil {
 		log.Fatalf("Failed to connect Nats: %s", err.Error())
@@ -34,5 +34,13 @@ func (s *MessageQueue) Subscribe(subj, queueName string, ch chan *nats.Msg) {
 func (s *MessageQueue) Publish(subj string, ch chan []byte) {
 	for msg := range ch {
 		s.natConn.Publish(subj, msg)
+	}
+}
+
+func logSlowConsumer(nc *nats.Conn, sub *nats.Subscription, err error) {
+	if err == nats.ErrSlowConsumer {
+		dropped, _ := sub.Dropped()
+		log.Printf("Slow consumer on subject %q: dropped %d messages\n",
+			sub.Subject, dropped)
 	}
 }

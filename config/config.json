@@ -9,6 +9,6 @@
     },
     "job":{
         "retryCount" : 3,
-        "timeout": 3500
+        "timeout": 5000
     }
 }
