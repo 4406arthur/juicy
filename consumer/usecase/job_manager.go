@@ -57,6 +57,7 @@ func (m *jobManager) Start(ctx context.Context) {
 				log.Printf("got wrong job format: %s", err.Error())
 				continue
 			}
+			log.Printf("Recevie job: %s", job.QuesionID)
 			m.workerPool.Submit(
 				func() {
 					opsProcessed.Inc()
