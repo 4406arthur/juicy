@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"os/exec"
 
 	"github.com/4406arthur/juicy/domain"
 	"github.com/gammazero/workerpool"
@@ -90,7 +92,9 @@ func (m *jobManager) Task(job domain.Job) {
 	var Respond domain.Respond
 	Respond, err := m.PostInferenceHandler(job.ServerEndpoint, job.Payload)
 	if err != nil {
-		log.Printf("Qid: %s TeamID: %s Got error with: %s \n", job.QuesionID, job.TeamID, err.Error())
+		errMsg := fmt.Sprintf("[ERROR] Qid: %s TeamID: %s Got error with: %s \n", job.QuesionID, job.TeamID, err.Error())
+		log.Printf(errMsg)
+		alertPush(errMsg)
 		jsonByte, _ := ffjson.Marshal(&domain.Respond{
 			TeamID:    job.TeamID,
 			QuesionID: job.QuesionID,
@@ -102,12 +106,15 @@ func (m *jobManager) Task(job domain.Job) {
 	}
 	err = m.validate.Struct(&Respond)
 	if err != nil {
-		log.Printf("Qid: %s TeamID: %s Got error when validate inference server resp: %s \n", job.QuesionID, job.TeamID, err.Error())
+		errMsg := fmt.Sprintf("[ERROR] Qid: %s TeamID: %s Got error when validate inference server resp: %s \n", job.QuesionID, job.TeamID, err.Error())
+		log.Printf(errMsg)
+		alertPush(errMsg)
 		jsonByte, _ := ffjson.Marshal(&domain.Respond{
 			TeamID:    job.TeamID,
 			QuesionID: job.QuesionID,
 			ErrorMsg:  err.Error(),
 		})
+		opsError.Inc()
 		m.ansCh <- jsonByte
 		return
 	}
@@ -144,4 +151,14 @@ func (m *jobManager) PostInferenceHandler(endpoint string, rq domain.Request) (d
 
 	ffjson.Unmarshal(respBody, &respond)
 	return respond, nil
+}
+
+func alertPush(msg string) {
+	curlCMD := fmt.Sprintf("curl -X POST -H 'Content-type: application/json' --data '{\"text\": \"%s\"}' https://hooks.slack.com/services/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", msg)
+	cmd := exec.Command(curlCMD)
+	err := cmd.Run()
+
+	if err != nil {
+		log.Printf("curl error: %s \n", err.Error())
+	}
 }
