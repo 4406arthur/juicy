@@ -68,8 +68,8 @@ func printVersion() {
 // use a single instance of Validate, it caches struct info
 var validate *validator.Validate
 
-func init() {
-	f, err := os.OpenFile("/var/log/juicy.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+func setLogPath(filePath string) {
+	f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatalf("error opening file: %v", err)
 	}
@@ -92,6 +92,11 @@ func main() {
 	}
 
 	viperConfig := setup(configFile)
+	logPath := viperConfig.GetString(`log.path`)
+	if logPath != "" {
+		setLogPath(logPath)
+	}
+
 	natsHost := viperConfig.GetString(`nats.host`)
 	messageQueue := _natsDeliver.NewMessageQueue(natsHost)
 	jobRetry := viperConfig.GetInt(`job.retryCount`)
