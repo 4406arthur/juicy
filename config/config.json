@@ -1,6 +1,6 @@
 {
     "nats": {
-        "host": "localhost:4222",
+        "host": "nats:4222",
         "sub": "question",
         "pub": "answer"
     },
@@ -10,5 +10,8 @@
     "job":{
         "retryCount" : 3,
         "timeout": 5000
+    },
+    "slackAlert": {
+        "endpoint": "https://hooks.slack.com/services/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"
     }
 }

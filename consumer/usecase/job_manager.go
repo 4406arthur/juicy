@@ -9,7 +9,9 @@ import (
 	"log"
 	"net/http"
 	"os/exec"
+	"strings"
 
+	"github.com/4406arthur/juicy/consumer/alert"
 	"github.com/4406arthur/juicy/domain"
 	"github.com/gammazero/workerpool"
 	"github.com/go-playground/validator/v10"
@@ -27,11 +29,11 @@ type jobManager struct {
 	jobQueue   <-chan *nats.Msg
 	ansCh      chan<- []byte
 	finished   chan<- bool
-	//jobRepo  domain.JobRepository
+	alert      alert.Alert
 }
 
 //NewJobManager ...
-func NewJobManager(poolSize int, validate *validator.Validate, httpCli *httpclient.Client, jobQueue <-chan *nats.Msg, ansCh chan<- []byte, finished chan<- bool) domain.JobManager {
+func NewJobManager(poolSize int, validate *validator.Validate, httpCli *httpclient.Client, jobQueue <-chan *nats.Msg, ansCh chan<- []byte, finished chan<- bool, alert alert.Alert) domain.JobManager {
 	wp := workerpool.New(poolSize)
 	return &jobManager{
 		workerPool: wp,
@@ -40,6 +42,7 @@ func NewJobManager(poolSize int, validate *validator.Validate, httpCli *httpclie
 		jobQueue:   jobQueue,
 		ansCh:      ansCh,
 		finished:   finished,
+		alert:      alert,
 	}
 }
 
@@ -51,6 +54,7 @@ var (
 )
 
 func (m *jobManager) Start(ctx context.Context) {
+	log.Printf("[Info] job manager starting\n")
 	for {
 		select {
 		case element := <-m.jobQueue:
@@ -58,17 +62,17 @@ func (m *jobManager) Start(ctx context.Context) {
 			ffjson.Unmarshal(element.Data, &job)
 			err := m.validate.Struct(job)
 			if err != nil {
-				log.Printf("got wrong job format: %s", err.Error())
+				log.Printf("[Error] got wrong job format: %s", err.Error())
 				continue
 			}
-			log.Printf("Recevie job: %s", job.QuesionID)
+			log.Printf("[Debug] Recevie job: %s", job.QuesionID)
 			m.workerPool.Submit(
 				func() {
 					opsProcessed.Inc()
 					m.Task(job)
 				})
 		case <-ctx.Done():
-			log.Println("close workers")
+			log.Println("[Info] close workers")
 			m.Stop()
 			return
 		}
@@ -77,7 +81,7 @@ func (m *jobManager) Start(ctx context.Context) {
 
 func (m *jobManager) Stop() {
 	m.workerPool.StopWait()
-	log.Printf("already completed pending task")
+	log.Printf("[Info] already completed pending task")
 	m.finished <- true
 }
 
@@ -94,7 +98,7 @@ func (m *jobManager) Task(job domain.Job) {
 	if err != nil {
 		errMsg := fmt.Sprintf("[ERROR] Qid: %s TeamID: %s Got error with: %s \n", job.QuesionID, job.TeamID, err.Error())
 		log.Printf(errMsg)
-		alertPush(errMsg)
+		m.alert.PushNotify(errMsg)
 		jsonByte, _ := ffjson.Marshal(&domain.Respond{
 			TeamID:    job.TeamID,
 			QuesionID: job.QuesionID,
@@ -108,7 +112,7 @@ func (m *jobManager) Task(job domain.Job) {
 	if err != nil {
 		errMsg := fmt.Sprintf("[ERROR] Qid: %s TeamID: %s Got error when validate inference server resp: %s \n", job.QuesionID, job.TeamID, err.Error())
 		log.Printf(errMsg)
-		alertPush(errMsg)
+		m.alert.PushNotify(errMsg)
 		jsonByte, _ := ffjson.Marshal(&domain.Respond{
 			TeamID:    job.TeamID,
 			QuesionID: job.QuesionID,
@@ -136,16 +140,16 @@ func (m *jobManager) PostInferenceHandler(endpoint string, rq domain.Request) (d
 		headers,
 	)
 	if err != nil {
-		log.Printf("http invoke error: %s \n", err.Error())
+		//log.Printf("[Error] http invoke error: %s \n", err.Error())
 		return respond, err
 	}
 	if resp.StatusCode >= 400 {
-		log.Printf("http invoke got wrong statusCode: %d \n", resp.StatusCode)
+		//log.Printf("[Error] http invoke got wrong statusCode: %d \n", resp.StatusCode)
 		return respond, errors.New("wrong http status code")
 	}
 	respBody, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("parse respond error: %s \n", err.Error())
+		//log.Printf("[Error] parse respond error: %s \n", err.Error())
 		return respond, err
 	}
 
@@ -155,9 +159,9 @@ func (m *jobManager) PostInferenceHandler(endpoint string, rq domain.Request) (d
 
 func alertPush(msg string) {
 	curlCMD := fmt.Sprintf("curl -X POST -H 'Content-type: application/json' --data '{\"text\": \"%s\"}' https://hooks.slack.com/services/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", msg)
-	cmd := exec.Command(curlCMD)
+	cmdList := strings.Split(curlCMD, " ")
+	cmd := exec.Command(cmdList[0], cmdList[1:]...)
 	err := cmd.Run()
-
 	if err != nil {
 		log.Printf("curl error: %s \n", err.Error())
 	}

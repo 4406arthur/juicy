@@ -13,6 +13,7 @@ import (
 	"time"
 
 	// _ "github.com/lib/pq"
+	"github.com/4406arthur/juicy/consumer/alert"
 	_natsDeliver "github.com/4406arthur/juicy/consumer/delivery/nats"
 	_jobManager "github.com/4406arthur/juicy/consumer/usecase"
 	"github.com/go-playground/validator/v10"
@@ -67,6 +68,14 @@ func printVersion() {
 // use a single instance of Validate, it caches struct info
 var validate *validator.Validate
 
+func init() {
+	f, err := os.OpenFile("/var/log/juicy.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	log.SetOutput(f)
+}
+
 func main() {
 
 	var configFile string
@@ -94,6 +103,9 @@ func main() {
 		httpclient.WithRetrier(heimdall.NewRetrier(heimdall.NewConstantBackoff(10*time.Millisecond, 50*time.Millisecond))),
 	)
 
+	//setup slack alert
+	slackAlert := alert.NewSlackWebhook(httpCli, viperConfig.GetString(`slackAlert.endpoint`))
+
 	//could be buffer queue
 	jobQueue := make(chan *nats.Msg, 1000)
 	defer close(jobQueue)
@@ -104,7 +116,7 @@ func main() {
 	finished := make(chan bool)
 	defer close(finished)
 	ctx := withContextFunc(context.Background(), func() {
-		log.Println("cancel from ctrl+c event")
+		log.Println("[Info] cancel from ctrl+c event")
 	})
 
 	sub := viperConfig.GetString(`nats.sub`)
@@ -112,7 +124,7 @@ func main() {
 	messageQueue.Subscribe(sub, "juicy-workers", jobQueue)
 	validate = validator.New()
 	wokerPoolSize := viperConfig.GetInt(`worker.poolSize`)
-	jobManager := _jobManager.NewJobManager(wokerPoolSize, validate, httpCli, jobQueue, ansCh, finished)
+	jobManager := _jobManager.NewJobManager(wokerPoolSize, validate, httpCli, jobQueue, ansCh, finished, slackAlert)
 	go jobManager.Start(ctx)
 	go messageQueue.Publish(pub, ansCh)
 

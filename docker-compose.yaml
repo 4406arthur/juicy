@@ -1,0 +1,20 @@
+version: '3.7'
+services:
+  nats:
+    image: nats:2.1.8-linux
+    command: "-D -m 8222"
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+  job-manager:
+    # build:
+    #   context: .
+    image: arthurma/juicy:v0.0.1
+    ports:
+      - "2112:2112"
+    depends_on:
+      - nats
+    volumes:
+     - type: bind
+       source: ./config
+       target: /config
