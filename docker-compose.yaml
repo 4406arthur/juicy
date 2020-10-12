@@ -1,17 +1,15 @@
-version: '3.7'
+version: '3.8'
 services:
   nats:
     image: nats:2.1.8-linux
+    network_mode: "host"
     command: "-D -m 8222"
-    ports:
-      - "4222:4222"
-      - "8222:8222"
+
   job-manager:
     # build:
     #   context: .
-    image: arthurma/juicy:v0.0.1
-    ports:
-      - "2112:2112"
+    image: arthurma/juicy:v0.0.3
+    network_mode: "host"
     depends_on:
       - nats
     volumes:

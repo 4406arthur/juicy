@@ -29,14 +29,14 @@ func NewSlackWebhook(httpCli *httpclient.Client, url string) *SlackWebhook {
 
 // PushNotify ...
 func (s *SlackWebhook) PushNotify(msg string) error {
-	Paylaod, _ := ffjson.Marshal(&slackWebhookRQ{
+	payload, _ := ffjson.Marshal(&slackWebhookRQ{
 		Text: msg,
 	})
 	headers := http.Header{}
 	headers.Set("Content-Type", "application/json")
 	resp, err := s.httpClient.Post(
 		s.url,
-		bytes.NewBuffer(Paylaod),
+		bytes.NewBuffer(payload),
 		headers,
 	)
 	if err != nil {

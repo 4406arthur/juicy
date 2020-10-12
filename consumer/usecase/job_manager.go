@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/4406arthur/juicy/consumer/alert"
@@ -145,7 +146,7 @@ func (m *jobManager) PostInferenceHandler(endpoint string, rq domain.Request) (d
 	}
 	if resp.StatusCode >= 400 {
 		//log.Printf("[Error] http invoke got wrong statusCode: %d \n", resp.StatusCode)
-		return respond, errors.New("wrong http status code")
+		return respond, errors.New("wrong http status code: " + strconv.Itoa(resp.StatusCode))
 	}
 	respBody, err := ioutil.ReadAll(resp.Body)
 	if err != nil {

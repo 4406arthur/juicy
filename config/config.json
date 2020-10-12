@@ -1,6 +1,6 @@
 {
     "nats": {
-        "host": "nats:4222",
+        "host": "localhost:4222",
         "sub": "question",
         "pub": "answer"
     },
@@ -12,6 +12,6 @@
         "timeout": 5000
     },
     "slackAlert": {
-        "endpoint": "https://hooks.slack.com/services/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"
+        "endpoint": "https://hooks.slack.com/services/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"
     }
 }
