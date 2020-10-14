@@ -8,9 +8,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"os/exec"
 	"strconv"
-	"strings"
 
 	"github.com/4406arthur/juicy/consumer/alert"
 	"github.com/4406arthur/juicy/domain"
@@ -66,7 +64,7 @@ func (m *jobManager) Start(ctx context.Context) {
 				log.Printf("[Error] got wrong job format: %s", err.Error())
 				continue
 			}
-			log.Printf("[Debug] Recevie job: %s", job.QuesionID)
+			log.Printf("[Debug] Recevie job: %d", job.QuesionID)
 			m.workerPool.Submit(
 				func() {
 					opsProcessed.Inc()
@@ -97,11 +95,11 @@ func (m *jobManager) Task(job domain.Job) {
 	var Respond domain.Respond
 	Respond, err := m.PostInferenceHandler(job.ServerEndpoint, job.Payload)
 	if err != nil {
-		errMsg := fmt.Sprintf("[ERROR] Qid: %s TeamID: %s Got error with: %s \n", job.QuesionID, job.TeamID, err.Error())
+		errMsg := fmt.Sprintf("[ERROR] Qid: %d TeamID: %s Got error with: %s \n", job.QuesionID, job.ClientID, err.Error())
 		log.Printf(errMsg)
 		m.alert.PushNotify(errMsg)
 		jsonByte, _ := ffjson.Marshal(&domain.Respond{
-			TeamID:    job.TeamID,
+			ClientID:  job.ClientID,
 			QuesionID: job.QuesionID,
 			ErrorMsg:  err.Error(),
 		})
@@ -111,11 +109,11 @@ func (m *jobManager) Task(job domain.Job) {
 	}
 	err = m.validate.Struct(&Respond)
 	if err != nil {
-		errMsg := fmt.Sprintf("[ERROR] Qid: %s TeamID: %s Got error when validate inference server resp: %s \n", job.QuesionID, job.TeamID, err.Error())
+		errMsg := fmt.Sprintf("[ERROR] Qid: %d TeamID: %s Got error when validate inference server resp: %s \n", job.QuesionID, job.ClientID, err.Error())
 		log.Printf(errMsg)
 		m.alert.PushNotify(errMsg)
 		jsonByte, _ := ffjson.Marshal(&domain.Respond{
-			TeamID:    job.TeamID,
+			ClientID:  job.ClientID,
 			QuesionID: job.QuesionID,
 			ErrorMsg:  err.Error(),
 		})
@@ -123,7 +121,7 @@ func (m *jobManager) Task(job domain.Job) {
 		m.ansCh <- jsonByte
 		return
 	}
-	Respond.TeamID = job.TeamID
+	Respond.ClientID = job.ClientID
 	Respond.QuesionID = job.QuesionID
 	jsonByte, _ := ffjson.Marshal(Respond)
 	m.ansCh <- jsonByte
@@ -156,14 +154,4 @@ func (m *jobManager) PostInferenceHandler(endpoint string, rq domain.Request) (d
 
 	ffjson.Unmarshal(respBody, &respond)
 	return respond, nil
-}
-
-func alertPush(msg string) {
-	curlCMD := fmt.Sprintf("curl -X POST -H 'Content-type: application/json' --data '{\"text\": \"%s\"}' https://hooks.slack.com/services/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", msg)
-	cmdList := strings.Split(curlCMD, " ")
-	cmd := exec.Command(cmdList[0], cmdList[1:]...)
-	err := cmd.Run()
-	if err != nil {
-		log.Printf("curl error: %s \n", err.Error())
-	}
 }
