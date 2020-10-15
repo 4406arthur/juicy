@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/4406arthur/juicy/consumer/alert"
 	"github.com/4406arthur/juicy/domain"
@@ -51,8 +52,19 @@ var (
 		Help: "The total number of job",
 	})
 )
+var (
+	queueLatency = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "queue_time_ms",
+			Help:    "Amount of job live time",
+			Buckets: []float64{1, 5, 10, 20, 30, 40, 50, 100, 300, 500, 1000, 3000},
+		},
+		[]string{"juicy"},
+	)
+)
 
 func (m *jobManager) Start(ctx context.Context) {
+	prometheus.MustRegister(queueLatency)
 	log.Printf("[Info] job manager starting\n")
 	for {
 		select {
@@ -64,9 +76,10 @@ func (m *jobManager) Start(ctx context.Context) {
 				log.Printf("[Error] got wrong job format: %s", err.Error())
 				continue
 			}
-			log.Printf("[Debug] Recevie job: %d", job.QuesionID)
+			log.Printf("[Debug] Recevie job - qid: %d for %s", job.QuesionID, job.ServerEndpoint)
 			m.workerPool.Submit(
 				func() {
+					queueLatency.WithLabelValues("queue").Observe(float64(makeTimestamp() - job.Payload.EsunTimestamp))
 					opsProcessed.Inc()
 					m.Task(job)
 				})
@@ -154,4 +167,8 @@ func (m *jobManager) PostInferenceHandler(endpoint string, rq domain.Request) (d
 
 	ffjson.Unmarshal(respBody, &respond)
 	return respond, nil
+}
+
+func makeTimestamp() int64 {
+	return time.Now().UnixNano() / int64(time.Millisecond)
 }

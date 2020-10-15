@@ -10,7 +10,7 @@ type Request struct {
 	QuesionID     int    `json:"qid" validate:"required"`
 	EsunUUID      string `json:"esun_uuid"`
 	ServerUUID    string `json:"server_uuid"`
-	EsunTimestamp int    `json:"esun_timestamp"`
+	EsunTimestamp int64  `json:"esun_timestamp"`
 	News          string `json:"news"`
 	Retry         int    `json:"retry"`
 }
