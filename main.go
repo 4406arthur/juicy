@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"runtime"
@@ -16,11 +15,11 @@ import (
 	"github.com/4406arthur/juicy/consumer/alert"
 	_natsDeliver "github.com/4406arthur/juicy/consumer/delivery/nats"
 	_jobManager "github.com/4406arthur/juicy/consumer/usecase"
+	"github.com/DataDog/datadog-go/statsd"
 	"github.com/go-playground/validator/v10"
 	"github.com/gojektech/heimdall"
 	"github.com/gojektech/heimdall/v6/httpclient"
 	"github.com/nats-io/nats.go"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/viper"
 )
 
@@ -111,8 +110,11 @@ func main() {
 	//setup slack alert
 	slackAlert := alert.NewSlackWebhook(httpCli, viperConfig.GetString(`slackAlert.endpoint`))
 
+	//setup a datadog metrics endpoint
+	statsd, _ := statsd.New("127.0.0.1:8125")
+
 	//could be buffer queue
-	jobQueue := make(chan *nats.Msg, 1000)
+	jobQueue := make(chan *nats.Msg, 2000)
 	defer close(jobQueue)
 	ansCh := make(chan []byte)
 	defer close(ansCh)
@@ -129,12 +131,9 @@ func main() {
 	messageQueue.Subscribe(sub, "juicy-workers", jobQueue)
 	validate = validator.New()
 	wokerPoolSize := viperConfig.GetInt(`worker.poolSize`)
-	jobManager := _jobManager.NewJobManager(wokerPoolSize, validate, httpCli, jobQueue, ansCh, finished, slackAlert)
+	jobManager := _jobManager.NewJobManager(wokerPoolSize, validate, httpCli, jobQueue, ansCh, finished, slackAlert, statsd)
 	go jobManager.Start(ctx)
 	go messageQueue.Publish(pub, ansCh)
-
-	http.Handle("/metrics", promhttp.Handler())
-	http.ListenAndServe(":2112", nil)
 
 	<-finished
 }

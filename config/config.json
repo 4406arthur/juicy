@@ -5,13 +5,13 @@
         "pub": "answer"
     },
     "worker":{
-        "poolSize": 8
+        "poolSize": 50
     },
     "job":{
         "retryCount" : 3,
         "timeout": 5000
     },
     "slackAlert": {
-        "endpoint": "https://hooks.slack.com/services/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"
+        "endpoint": "https://hooks.slack.com/services/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"
     }
 }

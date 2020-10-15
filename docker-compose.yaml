@@ -2,17 +2,17 @@ version: '3.8'
 services:
   nats:
     image: nats:2.1.8-linux
-    labels:
-      com.datadoghq.ad.logs: '[{"source": "go", "service": "nats"}]'
+    # labels:
+    #   com.datadoghq.ad.logs: '[{"source": "go", "service": "nats"}]'
     network_mode: "host"
     command: "-D -m 8222"
 
   job-manager:
     # build:
     #   context: .
-    image: arthurma/juicy:v0.0.4
-    labels:
-      com.datadoghq.ad.logs: '[{"source": "go", "service": "juicy"}]'
+    image: arthurma/juicy:v1.0.1
+    # labels:
+    #   com.datadoghq.ad.logs: '[{"source": "go", "service": "juicy"}]'
     network_mode: "host"
     depends_on:
       - nats

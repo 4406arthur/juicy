@@ -3,6 +3,7 @@ module github.com/4406arthur/juicy
 go 1.15
 
 require (
+	github.com/DataDog/datadog-go v3.7.1+incompatible
 	github.com/gammazero/workerpool v1.0.0
 	github.com/go-playground/validator/v10 v10.3.0
 	github.com/gojektech/heimdall v5.0.2+incompatible
