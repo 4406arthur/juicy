@@ -13,58 +13,41 @@ import (
 
 	"github.com/4406arthur/juicy/consumer/alert"
 	"github.com/4406arthur/juicy/domain"
+	"github.com/DataDog/datadog-go/statsd"
 	"github.com/gammazero/workerpool"
 	"github.com/go-playground/validator/v10"
 	"github.com/gojektech/heimdall/v6/httpclient"
 	"github.com/nats-io/nats.go"
 	"github.com/pquerna/ffjson/ffjson"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 type jobManager struct {
-	workerPool *workerpool.WorkerPool
-	validate   *validator.Validate
-	httpClient *httpclient.Client
-	jobQueue   <-chan *nats.Msg
-	ansCh      chan<- []byte
-	finished   chan<- bool
-	alert      alert.Alert
+	workerPool  *workerpool.WorkerPool
+	validate    *validator.Validate
+	httpClient  *httpclient.Client
+	jobQueue    <-chan *nats.Msg
+	ansCh       chan<- []byte
+	finished    chan<- bool
+	alert       alert.Alert
+	datadogStat *statsd.Client
 }
 
 //NewJobManager ...
-func NewJobManager(poolSize int, validate *validator.Validate, httpCli *httpclient.Client, jobQueue <-chan *nats.Msg, ansCh chan<- []byte, finished chan<- bool, alert alert.Alert) domain.JobManager {
+func NewJobManager(poolSize int, validate *validator.Validate, httpCli *httpclient.Client, jobQueue <-chan *nats.Msg, ansCh chan<- []byte, finished chan<- bool, alert alert.Alert, ds *statsd.Client) domain.JobManager {
 	wp := workerpool.New(poolSize)
 	return &jobManager{
-		workerPool: wp,
-		validate:   validate,
-		httpClient: httpCli,
-		jobQueue:   jobQueue,
-		ansCh:      ansCh,
-		finished:   finished,
-		alert:      alert,
+		workerPool:  wp,
+		validate:    validate,
+		httpClient:  httpCli,
+		jobQueue:    jobQueue,
+		ansCh:       ansCh,
+		finished:    finished,
+		alert:       alert,
+		datadogStat: ds,
 	}
 }
 
-var (
-	opsProcessed = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "juicy_manager_total_jobs",
-		Help: "The total number of job",
-	})
-)
-var (
-	queueLatency = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "queue_time_ms",
-			Help:    "Amount of job live time",
-			Buckets: []float64{1, 5, 10, 20, 30, 40, 50, 100, 300, 500, 1000, 3000},
-		},
-		[]string{"juicy"},
-	)
-)
-
 func (m *jobManager) Start(ctx context.Context) {
-	prometheus.MustRegister(queueLatency)
 	log.Printf("[Info] job manager starting\n")
 	for {
 		select {
@@ -79,8 +62,13 @@ func (m *jobManager) Start(ctx context.Context) {
 			log.Printf("[Debug] Recevie job - qid: %d for %s", job.QuesionID, job.ServerEndpoint)
 			m.workerPool.Submit(
 				func() {
-					queueLatency.WithLabelValues("queue").Observe(float64(makeTimestamp() - job.Payload.EsunTimestamp))
-					opsProcessed.Inc()
+					m.datadogStat.Histogram(
+						"juicy_queue_latency_ms.histogram",
+						float64(makeTimestamp()-job.Payload.EsunTimestamp),
+						[]string{"stage"},
+						1,
+					)
+					m.datadogStat.Incr("juicy_total_jobs", []string{"stage"}, 1)
 					m.Task(job)
 				})
 		case <-ctx.Done():
@@ -97,13 +85,6 @@ func (m *jobManager) Stop() {
 	m.finished <- true
 }
 
-var (
-	opsError = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "juicy_manager_failed_job",
-		Help: "The failed number of job",
-	})
-)
-
 func (m *jobManager) Task(job domain.Job) {
 	var Respond domain.Respond
 	Respond, err := m.PostInferenceHandler(job.ServerEndpoint, job.Payload)
@@ -116,7 +97,7 @@ func (m *jobManager) Task(job domain.Job) {
 			QuesionID: job.QuesionID,
 			ErrorMsg:  err.Error(),
 		})
-		opsError.Inc()
+		m.datadogStat.Incr("juicy_failed_jobs", []string{"stage"}, 1)
 		m.ansCh <- jsonByte
 		return
 	}
@@ -130,7 +111,7 @@ func (m *jobManager) Task(job domain.Job) {
 			QuesionID: job.QuesionID,
 			ErrorMsg:  err.Error(),
 		})
-		opsError.Inc()
+		m.datadogStat.Incr("juicy_failed_jobs", []string{"stage"}, 1)
 		m.ansCh <- jsonByte
 		return
 	}
