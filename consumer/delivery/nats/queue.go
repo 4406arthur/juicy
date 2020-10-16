@@ -26,8 +26,9 @@ func NewMessageQueue(conn string) *MessageQueue {
 }
 
 //Subscribe ...
-func (s *MessageQueue) Subscribe(subj, queueName string, ch chan *nats.Msg) {
-	s.natConn.QueueSubscribeSyncWithChan(subj, queueName, ch)
+func (s *MessageQueue) Subscribe(subj, queueName string, ch chan *nats.Msg) (*nats.Subscription, error) {
+	sub, err := s.natConn.QueueSubscribeSyncWithChan(subj, queueName, ch)
+	return sub, err
 }
 
 //Publish ...

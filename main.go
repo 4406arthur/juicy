@@ -122,16 +122,17 @@ func main() {
 	// syscall.SIGINT and syscall.SIGTERM
 	finished := make(chan bool)
 	defer close(finished)
-	ctx := withContextFunc(context.Background(), func() {
-		log.Println("[Info] cancel from ctrl+c event")
-	})
 
-	sub := viperConfig.GetString(`nats.sub`)
+	subject := viperConfig.GetString(`nats.sub`)
 	pub := viperConfig.GetString(`nats.pub`)
-	messageQueue.Subscribe(sub, "juicy-workers", jobQueue)
+	subscription, _ := messageQueue.Subscribe(subject, "juicy-workers", jobQueue)
 	validate = validator.New()
 	wokerPoolSize := viperConfig.GetInt(`worker.poolSize`)
 	jobManager := _jobManager.NewJobManager(wokerPoolSize, validate, httpCli, jobQueue, ansCh, finished, slackAlert, statsd)
+	ctx := withContextFunc(context.Background(), func() {
+		log.Println("[Info] cancel from ctrl+c event")
+		subscription.Unsubscribe()
+	})
 	go jobManager.Start(ctx)
 	go messageQueue.Publish(pub, ansCh)
 
