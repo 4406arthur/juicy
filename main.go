@@ -123,18 +123,22 @@ func main() {
 	finished := make(chan bool)
 	defer close(finished)
 
-	subject := viperConfig.GetString(`nats.sub`)
-	pub := viperConfig.GetString(`nats.pub`)
-	subscription, _ := messageQueue.Subscribe(subject, "juicy-workers", jobQueue)
+	questionSubject := viperConfig.GetString(`nats.sub`)
+	answerSubject := viperConfig.GetString(`nats.pub`)
+	subscription, err := messageQueue.Subscribe(questionSubject, "juicy-workers", jobQueue)
+	if err != nil {
+		log.Fatalln("[ERROR] Nats internal issue")
+	}
+
 	validate = validator.New()
 	wokerPoolSize := viperConfig.GetInt(`worker.poolSize`)
 	jobManager := _jobManager.NewJobManager(wokerPoolSize, validate, httpCli, jobQueue, ansCh, finished, slackAlert, statsd)
 	ctx := withContextFunc(context.Background(), func() {
-		log.Println("[Info] cancel from ctrl+c event")
+		log.Println("[Info] catch process TERM signal")
 		subscription.Unsubscribe()
 	})
 	go jobManager.Start(ctx)
-	go messageQueue.Publish(pub, ansCh)
+	go messageQueue.Publish(answerSubject, ansCh)
 
 	<-finished
 }
